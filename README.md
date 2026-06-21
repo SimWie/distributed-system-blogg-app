@@ -24,7 +24,7 @@ Ein Web-API-Backend für ein Blog-System, entwickelt im Rahmen des Kurses zu ver
 
 ```bash
 # Repository klonen
-git clone https://github.com/simonwiedmer/distributed-system-blogg-app.git
+git clone https://github.com/simwie/distributed-system-blogg-app.git
 cd distributed-system-blogg-app
 
 # Im Dev-Modus starten (mit Live Reload)

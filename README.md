@@ -8,7 +8,8 @@ Ein Web-API-Backend für ein Blog-System, entwickelt im Rahmen des Kurses zu ver
 
 ### Aktuell implementiert
 - Projekt-Setup mit Quarkus und REST JSON-B Extension
-- Beispiel-Endpunkt (`/hello`)
+- Endpunkt `/hello` – gibt eine Begrüssung zurück
+- Endpunkt `/blog` – gibt eine Blog-Willkommensnachricht zurück
 
 ### Geplant / in Arbeit
 - Blog-Posts erstellen, lesen, bearbeiten und löschen (CRUD-API)
@@ -40,9 +41,10 @@ Das Quarkus Dev UI ist erreichbar unter `http://localhost:8080/q/dev/`.
 
 ### Aktuell verfügbare Endpunkte
 
-| Methode | Endpunkt  | Beschreibung        |
-|---------|-----------|---------------------|
-| GET     | `/hello`  | Test-Endpunkt       |
+| Methode | Endpunkt  | Beschreibung                        |
+|---------|-----------|-------------------------------------|
+| GET     | `/hello`  | Gibt eine Begrüssung zurück         |
+| GET     | `/blog`   | Gibt eine Blog-Willkommensnachricht zurück |
 
 ### Geplante Endpunkte
 

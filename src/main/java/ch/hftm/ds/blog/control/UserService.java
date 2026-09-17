@@ -29,13 +29,19 @@ public class UserService {
         userRepository.persist(user);
     }
 
+    /**
+     * Aktualisiert den Benutzernamen eines bestehenden Benutzers.
+     *
+     * @return den aktualisierten Benutzer, oder {@code null}, falls kein
+     *         Benutzer mit der übergebenen id existiert.
+     */
     @Transactional
-    public boolean updateUser(Long id, User updated) {
+    public User updateUser(Long id, User updated) {
         User existing = userRepository.findById(id);
-        if (existing == null) return false;
+        if (existing == null) return null;
         existing.setUsername(updated.getUsername());
         Log.info("Updating user " + id);
-        return true;
+        return existing;
     }
 
     @Transactional

@@ -5,6 +5,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.ManyToOne;
+import jakarta.validation.constraints.NotBlank;
 
 @Entity
 public class Comment {
@@ -12,6 +13,7 @@ public class Comment {
     @GeneratedValue
     private Long id;
 
+    @NotBlank(message = "content must not be blank")
     private String content;
 
     @JsonbTransient

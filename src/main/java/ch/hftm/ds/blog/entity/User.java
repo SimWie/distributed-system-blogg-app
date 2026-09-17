@@ -10,6 +10,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
+import jakarta.validation.constraints.NotBlank;
 
 @Entity
 @Table(name = "blog_user")
@@ -18,6 +19,7 @@ public class User {
     @GeneratedValue
     private Long id;
 
+    @NotBlank(message = "username must not be blank")
     private String username;
 
     @JsonbTransient

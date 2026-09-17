@@ -19,6 +19,20 @@ public class BlogService {
         return blogs;
     }
 
+    /**
+     * Gibt alle Blogs zurück, deren Titel den übergebenen Suchbegriff
+     * enthält (Gross-/Kleinschreibung wird ignoriert). Ist der Suchbegriff
+     * leer oder null, wird das Verhalten von {@link #getBlogs()} verwendet.
+     */
+    public List<Blog> getBlogs(String search) {
+        if (search == null || search.isBlank()) {
+            return getBlogs();
+        }
+        var blogs = blogRepository.list("lower(title) like ?1", "%" + search.toLowerCase() + "%");
+        Log.info("Returning " + blogs.size() + " blogs matching search '" + search + "'");
+        return blogs;
+    }
+
     public Blog getBlogById(Long id) {
         return blogRepository.findById(id);
     }
@@ -29,14 +43,20 @@ public class BlogService {
         blogRepository.persist(blog);
     }
 
+    /**
+     * Aktualisiert Titel und Inhalt eines bestehenden Blogs.
+     *
+     * @return den aktualisierten Blog, oder {@code null}, falls kein Blog
+     *         mit der übergebenen id existiert.
+     */
     @Transactional
-    public boolean updateBlog(Long id, Blog updated) {
+    public Blog updateBlog(Long id, Blog updated) {
         Blog existing = blogRepository.findById(id);
-        if (existing == null) return false;
+        if (existing == null) return null;
         existing.setTitle(updated.getTitle());
         existing.setContent(updated.getContent());
         Log.info("Updating blog " + id);
-        return true;
+        return existing;
     }
 
     @Transactional

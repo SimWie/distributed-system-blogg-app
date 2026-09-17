@@ -6,6 +6,7 @@ import ch.hftm.ds.blog.control.UserService;
 import ch.hftm.ds.blog.entity.User;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import jakarta.validation.Valid;
 import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
@@ -31,25 +32,29 @@ public class UserResource {
     public Response getUserById(@PathParam("id") Long id) {
         User user = userService.getUserById(id);
         if (user == null) {
-            return Response.status(Response.Status.NOT_FOUND).build();
+            return Response.status(Response.Status.NOT_FOUND)
+                    .entity(new ErrorResponse("User with id " + id + " not found"))
+                    .build();
         }
         return Response.ok(user).build();
     }
 
     @POST
-    public Response addUser(User user) {
+    public Response addUser(@Valid User user) {
         userService.addUser(user);
-        return Response.status(Response.Status.CREATED).build();
+        return Response.status(Response.Status.CREATED).entity(user).build();
     }
 
     @PUT
     @Path("{id}")
-    public Response updateUser(@PathParam("id") Long id, User user) {
-        boolean updated = userService.updateUser(id, user);
-        if (!updated) {
-            return Response.status(Response.Status.NOT_FOUND).build();
+    public Response updateUser(@PathParam("id") Long id, @Valid User user) {
+        User updated = userService.updateUser(id, user);
+        if (updated == null) {
+            return Response.status(Response.Status.NOT_FOUND)
+                    .entity(new ErrorResponse("User with id " + id + " not found"))
+                    .build();
         }
-        return Response.ok().build();
+        return Response.ok(updated).build();
     }
 
     @DELETE
@@ -57,7 +62,9 @@ public class UserResource {
     public Response deleteUser(@PathParam("id") Long id) {
         boolean deleted = userService.deleteUser(id);
         if (!deleted) {
-            return Response.status(Response.Status.NOT_FOUND).build();
+            return Response.status(Response.Status.NOT_FOUND)
+                    .entity(new ErrorResponse("User with id " + id + " not found"))
+                    .build();
         }
         return Response.noContent().build();
     }

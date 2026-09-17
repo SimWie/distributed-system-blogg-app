@@ -9,6 +9,8 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
+import jakarta.json.bind.annotation.JsonbTransient;
+import jakarta.validation.constraints.NotBlank;
 
 @Entity
 public class Blog {
@@ -16,12 +18,16 @@ public class Blog {
     @GeneratedValue
     private Long id;
 
+    @NotBlank(message = "title must not be blank")
     private String title;
+
+    @NotBlank(message = "content must not be blank")
     private String content;
 
     @ManyToOne
     private User author;
 
+    @JsonbTransient
     @OneToMany(mappedBy = "blog", cascade = CascadeType.ALL)
     private List<Comment> comments = new ArrayList<>();
 

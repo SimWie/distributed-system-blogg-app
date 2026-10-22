@@ -50,11 +50,11 @@ public class BlogService {
      *         mit der übergebenen id existiert.
      */
     @Transactional
-    public Blog updateBlog(Long id, Blog updated) {
+    public Blog updateBlog(Long id, String title, String content) {
         Blog existing = blogRepository.findById(id);
         if (existing == null) return null;
-        existing.setTitle(updated.getTitle());
-        existing.setContent(updated.getContent());
+        existing.setTitle(title);
+        existing.setContent(content);
         Log.info("Updating blog " + id);
         return existing;
     }

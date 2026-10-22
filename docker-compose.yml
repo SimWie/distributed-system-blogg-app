@@ -1,0 +1,19 @@
+# Lokale Entwicklungsumgebung: Keycloak als Identity Provider für die Blog-API.
+# Nur für die Entwicklung gedacht (start-dev, einfache Passwörter).
+#
+# Start:  docker compose up -d keycloak
+# Stop:   docker compose down
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.1
+    command: start-dev --import-realm
+    environment:
+      # Zugang zur Keycloak-Admin-Konsole (http://localhost:8180)
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+    ports:
+      # Port 8180, weil 8080 vom Quarkus-Backend belegt ist.
+      - "127.0.0.1:8180:8080"
+    volumes:
+      # Realm "blog" (Rollen, Client, Test-Benutzer) wird beim Start importiert.
+      - ./keycloak/blog-realm.json:/opt/keycloak/data/import/blog-realm.json:ro

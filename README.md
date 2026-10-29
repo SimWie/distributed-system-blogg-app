@@ -144,33 +144,106 @@ Weitere Beobachtung: Die Suche (`GET /blogs?search=...`) verwendet eine parametr
 
 ---
 
-## Authentifizierung mit Keycloak: Tokens holen
+## Berechtigungskonzept
 
-Als Identity Provider wird [Keycloak](https://www.keycloak.org/) eingesetzt. In diesem Schritt wird noch nicht das Backend geschützt, sondern gezeigt, wie ein Client direkt bei Keycloak ein Access-Token (JWT) abholt, es analysiert und über das Refresh-Token erneuert. Mit diesem Token werden später die geschützten API-Methoden aufgerufen (`Authorization: Bearer <token>`).
+Grundsatz: **Lesen ist öffentlich, Schreiben braucht ein Login.** Wer welche Rolle hat, legt Keycloak fest. Das Backend liest die Rollen aus dem Access-Token (`realm_access.roles`) und prüft sie mit `@RolesAllowed`. Die Umsetzung im Quarkus-Backend (`quarkus-oidc`) folgt in der nächsten Einheit. Aktuell sind noch alle Endpunkte offen.
 
-### Setup
+### Benutzer-Rollen
 
-- Keycloak läuft als Docker-Container auf Port `8180`
-- Realm: `blog`
-- Client: `backend-service` (Client authentication: ON, Direct access grants: aktiviert)
-- Benutzer: `alice` / `alice` mit den Realm-Rollen `author` und `admin`
-- CLI-Tool [HTTPie](https://httpie.io/) (`brew install httpie`)
+| Rolle | Wer | Darf zusätzlich zu „öffentlich" |
+|-------|-----|----------------------------------|
+| *(keine / anonym)* | Besucher ohne Login | Blogs und Kommentare lesen |
+| `reader` | Registrierter Leser | Kommentare schreiben, eigene Kommentare löschen |
+| `author` | Autor | Wie `reader`, plus Blog-Einträge erstellen und **eigene** Einträge ändern |
+| `admin` | Administrator | Alles, insbesondere Blogs und beliebige Kommentare löschen sowie Benutzer verwalten |
 
-Das Client Secret steht in der Keycloak-Admin-Konsole unter **Clients → backend-service → Credentials**. Für die folgenden Befehle wird es als Umgebungsvariable gesetzt:
+Die Rollen sind in Keycloak nicht hierarchisch. Jeder Test-Benutzer hat genau eine Rolle, deshalb werden in `@RolesAllowed` alle berechtigten Rollen aufgezählt (z. B. `@RolesAllowed({"reader", "author", "admin"})`).
+
+### Öffentliche Endpunkte (kein Login)
+
+| Methode | Pfad | Begründung |
+|---------|------|------------|
+| GET | `/blogs`, `/blogs?search=...` | Blog-Einträge sollen für alle lesbar sein |
+| GET | `/blogs/{id}` | dito |
+| GET | `/blogs/{blogId}/comments` | Kommentare gehören zum öffentlichen Inhalt eines Posts |
+
+Im Code werden diese Methoden mit `@PermitAll` markiert. Es gibt (noch) kein Feld „veröffentlicht/Entwurf“, daher sind alle vorhandenen Blogs öffentlich.
+
+### Zugriffsregeln
+
+| Methode | Pfad | Erlaubte Rollen | Zusätzliche Regel (Besitzprüfung im Code) |
+|---------|------|-----------------|--------------------------------------------|
+| GET | `/blogs`, `/blogs/{id}` | öffentlich | – |
+| POST | `/blogs` | `author`, `admin` | Der Autor wird aus dem Token (`preferred_username`) bestimmt, nicht mehr aus `authorId` im Body |
+| PUT | `/blogs/{id}` | `author`, `admin` | Ein `author` darf nur **eigene** Blogs ändern, sonst `403` |
+| DELETE | `/blogs/{id}` | `admin` | – |
+| GET | `/blogs/{blogId}/comments` | öffentlich | – |
+| POST | `/blogs/{blogId}/comments` | `reader`, `author`, `admin` | Der Kommentar-Autor kommt aus dem Token, der Query-Parameter `userId` entfällt |
+| DELETE | `/blogs/{blogId}/comments/{commentId}` | `reader`, `author`, `admin` | Nicht-Admins dürfen nur **eigene** Kommentare löschen, sonst `403` |
+| GET | `/users`, `/users/{id}` | `admin` | Benutzerliste ist nicht öffentlich |
+| POST / PUT / DELETE | `/users`, `/users/{id}` | `admin` | Benutzerkonten selbst (Passwort, Rollen) werden in Keycloak verwaltet |
+
+Antworten bei fehlender Berechtigung:
+
+- **`401 Unauthorized`**: kein oder ungültiges/abgelaufenes Token bei einem geschützten Endpunkt
+- **`403 Forbidden`**: gültiges Token, aber falsche Rolle oder fremde Ressource (z. B. `author1` ändert den Blog eines anderen Autors)
+
+Damit werden die OWASP-Risiken API1 (Besitzprüfung), API2 (Authentifizierung) und API5 (Rollenprüfung, z. B. `DELETE` nur für `admin`) adressiert.
+
+---
+
+## Keycloak lokal starten (Identity Provider)
+
+Als Identity Provider wird [Keycloak](https://www.keycloak.org/) verwendet. Die Konfiguration ist vollständig im Repository abgelegt, es ist **keine manuelle Konfiguration** in der Admin-Konsole nötig.
+
+- [`docker-compose.yml`](docker-compose.yml): Keycloak `26.8.1` im Dev-Modus auf Port `8180` (8080 ist vom Quarkus-Backend belegt)
+- [`keycloak/blog-realm.json`](keycloak/blog-realm.json): Realm-Export, wird beim Start automatisch importiert (`--import-realm`)
+
+**Voraussetzungen:** Docker, [HTTPie](https://httpie.io/) (`brew install httpie`)
+
+### Starten / Stoppen
 
 ```bash
-export CLIENT_SECRET=<client-secret-aus-keycloak>
+docker compose up -d keycloak
 ```
 
-### 1. Access-Token abholen (Password Grant)
+Nach ca. 20–30 Sekunden ist Keycloak bereit. Prüfen:
 
 ```bash
-http -v --form --auth backend-service:$CLIENT_SECRET \
-  POST http://localhost:8180/realms/blog/protocol/openid-connect/token \
-  username=alice password=alice grant_type=password
+http :8180/realms/blog/.well-known/openid-configuration
 ```
 
-Antwort von Keycloak (`200 OK`, Tokens gekürzt):
+```bash
+docker compose down
+```
+
+Da kein Volume für die Datenbank verwendet wird, startet Keycloak nach `docker compose down` wieder mit dem Stand aus `blog-realm.json`. Änderungen in der Admin-Konsole gehen dabei verloren und müssen bei Bedarf in die JSON-Datei übernommen werden.
+
+### Was importiert wird
+
+| Element | Wert |
+|---------|------|
+| Admin-Konsole | http://localhost:8180, Login `admin` / `admin` (nur lokal) |
+| Realm | `blog` |
+| Realm-Rollen | `reader`, `author`, `admin` |
+| Client | `blog-api`: Public Client (kein Client Secret), Direct Access Grants (Password Grant) aktiviert, Redirect-URIs für `localhost:4200` und `localhost:8080` |
+
+Test-Benutzer (Passwort = Benutzername, nur für die lokale Entwicklung):
+
+| Benutzer | Passwort | Realm-Rolle |
+|----------|----------|-------------|
+| `reader1` | `reader1` | `reader` |
+| `author1` | `author1` | `author` |
+| `admin1`  | `admin1`  | `admin` |
+
+### Access-Token mit HTTPie abholen
+
+```bash
+http --form POST :8180/realms/blog/protocol/openid-connect/token \
+  client_id=blog-api grant_type=password username=author1 password=author1
+```
+
+Antwort (`200 OK`, Tokens gekürzt):
 
 ```json
 {
@@ -183,66 +256,59 @@ Antwort von Keycloak (`200 OK`, Tokens gekürzt):
 }
 ```
 
-- `access_token`: Base64Url-codiertes JWT zur Autorisierung von API-Aufrufen
-- `expires_in`: Gültigkeit des Access-Tokens, 300 s (5 Minuten)
-- `refresh_token`: länger gültiges Token (1800 s), um ein neues Access-Token zu beziehen
-- `token_type`: `Bearer`
+Nur das Access-Token in eine Variable übernehmen (z. B. für spätere API-Aufrufe mit `Authorization: Bearer $TOKEN`):
 
-### 2. JWT-Analyse mit jwt.io
+```bash
+TOKEN=$(http --form POST :8180/realms/blog/protocol/openid-connect/token \
+  client_id=blog-api grant_type=password username=author1 password=author1 \
+  | python3 -c 'import sys, json; print(json.load(sys.stdin)["access_token"])')
+```
 
-Das `access_token` wurde im Debugger auf [jwt.io](https://jwt.io/) dekodiert. Payload (Auszug):
+Ein neues Access-Token über das Refresh-Token (ohne erneute Passworteingabe):
+
+```bash
+http --form POST :8180/realms/blog/protocol/openid-connect/token \
+  client_id=blog-api grant_type=refresh_token refresh_token=$REFRESH_TOKEN
+```
+
+### Rolle im Token prüfen (jwt.io)
+
+Das `access_token` im Debugger auf [jwt.io](https://jwt.io/) einfügen. Im Payload steht die Rolle unter `realm_access.roles`. Auszug für `author1`:
 
 ```json
 {
-  "exp": 1792667757,
-  "iat": 1792667457,
-  "iss": "http://keycloak:8180/realms/blog",
-  "aud": "account",
-  "sub": "6339c150-7d7c-4466-ba0f-15cbd70f6423",
+  "iss": "http://localhost:8180/realms/blog",
+  "azp": "blog-api",
   "typ": "Bearer",
-  "azp": "backend-service",
   "realm_access": {
-    "roles": ["author", "offline_access", "admin", "uma_authorization", "default-roles-bllog"]
+    "roles": ["author"]
   },
   "scope": "profile email",
-  "preferred_username": "alice"
+  "preferred_username": "author1"
 }
 ```
 
-| Claim | Wert | Bedeutung |
-|---|---|---|
-| `preferred_username` | `alice` | Angemeldeter Benutzer |
-| `realm_access.roles` | `author`, `admin`, … | Dem Benutzer zugewiesene Realm-Rollen. Darauf kann das Backend später mit `@RolesAllowed` prüfen |
-| `iat` / `exp` | `1792667457` / `1792667757` | Ausstellungs- und Ablaufzeitpunkt (Unix-Timestamp), Differenz = 300 s |
-| `iss` | `http://keycloak:8180/realms/blog` | Aussteller des Tokens (Issuer) |
-| `azp` | `backend-service` | Client, für den das Token ausgestellt wurde |
-| `sub` | `6339c150-…` | Eindeutige ID des Benutzers in Keycloak |
+Verifiziert für alle drei Test-Benutzer:
 
-**Beobachtung:** Obwohl die Anfrage über `localhost:8180` lief, lautet der Issuer `http://keycloak:8180/...`, weil Keycloak mit einem festen Hostnamen konfiguriert ist. Ein Backend, das die Tokens validiert, muss den Hostnamen `keycloak` deshalb auflösen können (im Docker-Netzwerk automatisch, auf dem Host über einen `/etc/hosts`-Eintrag `127.0.0.1 keycloak`).
+| Benutzer | `realm_access.roles` | `iss` | Gültigkeit (`exp - iat`) |
+|----------|----------------------|-------|--------------------------|
+| `reader1` | `["reader"]` | `http://localhost:8180/realms/blog` | 300 s |
+| `author1` | `["author"]` | `http://localhost:8180/realms/blog` | 300 s |
+| `admin1`  | `["admin"]`  | `http://localhost:8180/realms/blog` | 300 s |
 
-### 3. Neues Access-Token über das Refresh-Token beziehen
+Für die nächste Einheit wird das Backend so konfiguriert:
 
-```bash
-http -v --form --auth backend-service:$CLIENT_SECRET \
-  POST http://localhost:8180/realms/blog/protocol/openid-connect/token \
-  client_id=backend-service grant_type=refresh_token refresh_token=<refresh_token>
+```properties
+quarkus.oidc.auth-server-url=http://localhost:8180/realms/blog
+quarkus.oidc.client-id=blog-api
 ```
-
-Antwort: `200 OK` mit einem neuen `access_token` **und** einem neuen `refresh_token`.
-
-Vergleich mit dem ersten Token:
-
-- `iat` und `exp` sind neu, die Gültigkeit beginnt wieder bei 300 s
-- `jti` (Token-ID) ist neu
-- `session_state` / `sid` bleiben gleich: Es wurde keine neue Anmeldung erzeugt, sondern die bestehende Keycloak-Session verlängert
-- Das Passwort des Benutzers musste nicht erneut angegeben werden
-- Für den nächsten Refresh muss das **neue** Refresh-Token verwendet werden
 
 ### Stolpersteine
 
-- Die Platzhalter `<...>` aus der Anleitung dürfen nicht wörtlich übernommen werden: zsh interpretiert `<` als Eingabeumleitung (`no such file or directory`).
-- `unauthorized_client` / `Invalid client credentials`: falsches oder fehlendes Client Secret.
-- `invalid_grant` beim Refresh: Das Refresh-Token ist abgelaufen (nach 30 Minuten). Dann zuerst wieder mit dem Password Grant ein neues Token-Paar holen.
+- Keycloak ist erst nach einigen Sekunden bereit. Vorher liefert der Token-Endpunkt `Connection refused` oder `404`.
+- `invalid_grant` / `Invalid user credentials`: falsches Passwort. Beim Refresh bedeutet `invalid_grant`, dass das Refresh-Token abgelaufen ist (nach 30 Minuten).
+- Platzhalter wie `<token>` nicht wörtlich übernehmen: zsh interpretiert `<` als Eingabeumleitung.
+- Der Issuer (`iss`) hängt von der URL ab, über die das Token geholt wurde. Das Backend muss Keycloak unter derselben URL (`http://localhost:8180`) ansprechen, sonst wird das Token abgelehnt.
 
 ---
 
@@ -260,13 +326,14 @@ Vergleich mit dem ersten Token:
 - CORS-Konfiguration, beschränkt auf den Angular-Dev-Server (siehe [CORS](#cors))
 - REST-Assured-Tests für Blogs, Kommentare und CORS (siehe [Tests](#tests))
 - Einschätzung zu den OWASP API Security Risks (siehe [Sicherheit](#sicherheit-owasp-api-security-top-10-2023))
-- Keycloak als Identity Provider eingerichtet (Realm `blog`, Client `backend-service`, Benutzer `alice`); Access- und Refresh-Tokens werden per HTTPie abgeholt und analysiert (siehe [Authentifizierung mit Keycloak](#authentifizierung-mit-keycloak-tokens-holen))
+- Berechtigungskonzept mit den Rollen `reader`, `author`, `admin` (siehe [Berechtigungskonzept](#berechtigungskonzept))
+- Reproduzierbares Keycloak-Setup via Docker Compose mit Realm-Import und Test-Benutzern; Access-Tokens werden per HTTPie abgeholt (siehe [Keycloak lokal starten](#keycloak-lokal-starten-identity-provider))
 
 ### Bewusst noch ausgeklammert
 Gemäss Aufgabenstellung sind folgende Themen erst für kommende Einheiten vorgesehen und daher aktuell noch nicht umgesetzt:
 - **DTOs für `/users`**: Die User-Endpunkte nehmen und liefern weiterhin direkt die Entity (`id`, `username`). Das ist vertretbar, solange die Entity keine internen Felder besitzt, sollte aber mit Passwort/Rollen (JWT-Einheit) auf DTOs umgestellt werden.
 - **Vertiefte Bean Validation**: Es ist bewusst nur je ein Pflichtfeld pro Entity validiert; weitere Regeln (z. B. Längenbeschränkungen, Formatvalidierung) folgen im nächsten REST-Teil.
-- **Benutzer-Authentifizierung (JWT) im Backend**: Keycloak stellt bereits Tokens aus, das Backend validiert sie aber noch nicht (keine `quarkus-oidc`-Extension). Alle Endpunkte sind aktuell ungeschützt.
+- **Benutzer-Authentifizierung (JWT) im Backend**: Keycloak stellt bereits Tokens aus und das [Berechtigungskonzept](#berechtigungskonzept) steht, das Backend validiert die Tokens aber noch nicht (keine `quarkus-oidc`-Extension, kein `@RolesAllowed`). Alle Endpunkte sind aktuell ungeschützt.
 - **Cloud Deployment**
 
 ---
@@ -357,6 +424,3 @@ Tests ausführen:
 - [Hibernate Validator (Bean Validation)](https://quarkus.io/guides/validation) – Validierung von Eingaben
 - [REST Assured](https://rest-assured.io/) – REST-Tests
 
-
-## Sercret für Backend
-I0HSD6787xJyZ2pLDreG0Xg7JtSALeqz

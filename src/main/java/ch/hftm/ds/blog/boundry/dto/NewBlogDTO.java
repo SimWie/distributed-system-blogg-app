@@ -3,15 +3,14 @@ package ch.hftm.ds.blog.boundry.dto;
 import ch.hftm.ds.blog.entity.Blog;
 import ch.hftm.ds.blog.entity.User;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 
 /**
  * Request-DTO für {@code POST /blogs}.
  *
  * Enthält nur die Felder, die ein Client beim Anlegen eines Blogs setzen darf.
  * Die {@code id} wird bewusst nicht entgegengenommen, sie wird vom Server
- * generiert. Der Autor wird über die {@code authorId} referenziert statt über
- * ein verschachteltes User-Objekt.
+ * generiert. Auch der Autor wird nicht vom Client angegeben, sondern aus dem
+ * Access-Token des angemeldeten Benutzers bestimmt.
  */
 public class NewBlogDTO {
 
@@ -21,16 +20,12 @@ public class NewBlogDTO {
     @NotBlank(message = "content must not be blank")
     private String content;
 
-    @NotNull(message = "authorId must not be null")
-    private Long authorId;
-
     public NewBlogDTO() {
     }
 
-    public NewBlogDTO(String title, String content, Long authorId) {
+    public NewBlogDTO(String title, String content) {
         this.title = title;
         this.content = content;
-        this.authorId = authorId;
     }
 
     /** Mapping DTO -> Entity. Der Autor wird vom Aufrufer aufgelöst. */
@@ -52,13 +47,5 @@ public class NewBlogDTO {
 
     public void setContent(String content) {
         this.content = content;
-    }
-
-    public Long getAuthorId() {
-        return authorId;
-    }
-
-    public void setAuthorId(Long authorId) {
-        this.authorId = authorId;
     }
 }

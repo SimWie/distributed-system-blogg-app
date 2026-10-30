@@ -23,6 +23,21 @@ public class UserService {
         return userRepository.findById(id);
     }
 
+    /**
+     * Gibt den Benutzer mit dem übergebenen Benutzernamen zurück und legt ihn
+     * an, falls er noch nicht existiert. Wird verwendet, um den in Keycloak
+     * angemeldeten Benutzer einem lokalen {@link User} zuzuordnen.
+     */
+    @Transactional
+    public User getOrCreateUser(String username) {
+        User user = userRepository.findByUsername(username);
+        if (user == null) {
+            user = new User(username);
+            addUser(user);
+        }
+        return user;
+    }
+
     @Transactional
     public void addUser(User user) {
         Log.info("Adding user " + user.getUsername());

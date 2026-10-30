@@ -12,10 +12,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.List;
 import java.util.UUID;
 
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 
 /**
  * REST-Level-Tests für den Blog-Endpunkt (Request-DTO {@code NewBlogDTO} /
@@ -31,14 +31,8 @@ import io.quarkus.test.junit.QuarkusTest;
  * und dass Client-seitig mitgeschickte Felder wie {@code id} ignoriert werden.
  */
 @QuarkusTest
+@TestSecurity(user = "alice", roles = { "admin", "user" })
 public class BlogResourceTest {
-
-    private Long testAuthorId;
-
-    @BeforeEach
-    void createTestAuthor() {
-        testAuthorId = TestData.createUser();
-    }
 
     @Test
     void gettingAllBlogs_returnsOk() {
@@ -59,7 +53,7 @@ public class BlogResourceTest {
 
     @Test
     void creatingBlogWithBlankTitle_returnsBadRequest() {
-        String body = "{\"title\":\"\",\"content\":\"some content\",\"authorId\":" + testAuthorId + "}";
+        String body = "{\"title\":\"\",\"content\":\"some content\"}";
 
         given()
                 .contentType("application/json")
@@ -72,30 +66,34 @@ public class BlogResourceTest {
     }
 
     @Test
-    void creatingBlogWithoutAuthorId_returnsBadRequest() {
+    void creatingBlog_takesAuthorFromToken() {
         given()
                 .contentType("application/json")
                 .body("{\"title\":\"Title\",\"content\":\"some content\"}")
                 .when().post("/blogs")
                 .then()
-                .statusCode(400)
-                .body("message", containsString("authorId"));
+                .statusCode(201)
+                .body("authorUsername", equalTo("alice"));
     }
 
     @Test
-    void creatingBlogWithUnknownAuthor_returnsNotFoundWithMessage() {
+    void creatingBlog_ignoresClientSuppliedAuthorId() {
+        Long otherUserId = TestData.createUser();
+
         given()
                 .contentType("application/json")
-                .body("{\"title\":\"Title\",\"content\":\"some content\",\"authorId\":999999999}")
+                .body("{\"title\":\"Title\",\"content\":\"c\",\"authorId\":" + otherUserId + "}")
                 .when().post("/blogs")
                 .then()
-                .statusCode(404)
-                .body("message", containsString("User with id 999999999 not found"));
+                .statusCode(201)
+                // Der Autor kommt aus dem Token, nicht aus dem Request.
+                .body("authorId", not(equalTo(otherUserId.intValue())))
+                .body("authorUsername", equalTo("alice"));
     }
 
     @Test
     void creatingBlog_returnsOnlyDtoFields() {
-        String body = "{\"title\":\"DTO Title\",\"content\":\"DTO content\",\"authorId\":" + testAuthorId + "}";
+        String body = "{\"title\":\"DTO Title\",\"content\":\"DTO content\"}";
 
         given()
                 .contentType("application/json")
@@ -106,8 +104,8 @@ public class BlogResourceTest {
                 .body("id", notNullValue())
                 .body("title", equalTo("DTO Title"))
                 .body("content", equalTo("DTO content"))
-                .body("authorId", equalTo(testAuthorId.intValue()))
-                .body("authorUsername", notNullValue())
+                .body("authorId", notNullValue())
+                .body("authorUsername", equalTo("alice"))
                 // Die Entity-Struktur (verschachtelter Autor, Kommentare) wird nicht ausgeliefert.
                 .body("$", not(hasKey("author")))
                 .body("$", not(hasKey("comments")));
@@ -115,8 +113,7 @@ public class BlogResourceTest {
 
     @Test
     void creatingBlog_ignoresClientSuppliedId() {
-        String body = "{\"id\":123456789,\"title\":\"Id Test\",\"content\":\"content\",\"authorId\":"
-                + testAuthorId + "}";
+        String body = "{\"id\":123456789,\"title\":\"Id Test\",\"content\":\"content\"}";
 
         Long createdId = given()
                 .contentType("application/json")
@@ -132,8 +129,7 @@ public class BlogResourceTest {
 
     @Test
     void creatingAndUpdatingABlog_returnsUpdatedFields() {
-        String createBody = "{\"title\":\"Original Title\",\"content\":\"Original content\","
-                + "\"authorId\":" + testAuthorId + "}";
+        String createBody = "{\"title\":\"Original Title\",\"content\":\"Original content\"}";
 
         Long blogId = given()
                 .contentType("application/json")
@@ -155,7 +151,7 @@ public class BlogResourceTest {
                 .body("title", equalTo("Updated Title"))
                 .body("content", equalTo("Updated content"))
                 // Der Autor bleibt beim Update unverändert.
-                .body("authorId", equalTo(testAuthorId.intValue()));
+                .body("authorUsername", equalTo("alice"));
 
         given()
                 .when().get("/blogs/{id}", blogId)
@@ -166,7 +162,7 @@ public class BlogResourceTest {
 
     @Test
     void updatingBlogWithBlankContent_returnsBadRequest() {
-        Long blogId = TestData.createBlog("Title", "content", testAuthorId);
+        Long blogId = TestData.createBlog("Title", "content");
 
         given()
                 .contentType("application/json")
@@ -192,7 +188,7 @@ public class BlogResourceTest {
 
     @Test
     void deletingABlog_returnsNoContentAndThenNotFound() {
-        Long blogId = TestData.createBlog("To delete", "content", testAuthorId);
+        Long blogId = TestData.createBlog("To delete", "content");
 
         given()
                 .when().delete("/blogs/{id}", blogId)
@@ -211,8 +207,8 @@ public class BlogResourceTest {
         String matchingTitle = uniqueTerm + " - matching blog";
         String otherTitle = "Unrelated blog " + UUID.randomUUID();
 
-        TestData.createBlog(matchingTitle, "content", testAuthorId);
-        TestData.createBlog(otherTitle, "content", testAuthorId);
+        TestData.createBlog(matchingTitle, "content");
+        TestData.createBlog(otherTitle, "content");
 
         List<String> titles = given()
                 .queryParam("search", uniqueTerm)

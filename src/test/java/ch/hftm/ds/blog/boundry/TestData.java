@@ -24,9 +24,9 @@ final class TestData {
                 .extract().jsonPath().getLong("id");
     }
 
-    static Long createBlog(String title, String content, Long authorId) {
-        String body = "{\"title\":\"" + title + "\",\"content\":\"" + content + "\","
-                + "\"authorId\":" + authorId + "}";
+    /** Legt einen Blog an. Autor ist der in der Test-Identität angemeldete Benutzer. */
+    static Long createBlog(String title, String content) {
+        String body = "{\"title\":\"" + title + "\",\"content\":\"" + content + "\"}";
         return given()
                 .contentType("application/json")
                 .body(body)

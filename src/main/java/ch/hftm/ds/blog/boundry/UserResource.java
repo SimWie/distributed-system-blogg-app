@@ -4,6 +4,7 @@ import java.util.List;
 
 import ch.hftm.ds.blog.control.UserService;
 import ch.hftm.ds.blog.entity.User;
+import jakarta.annotation.security.RolesAllowed;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
@@ -15,8 +16,12 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.core.Response;
 
+/**
+ * Benutzerverwaltung ist ausschliesslich für die Rolle {@code admin}.
+ */
 @Path("users")
 @ApplicationScoped
+@RolesAllowed("admin")
 public class UserResource {
 
     @Inject

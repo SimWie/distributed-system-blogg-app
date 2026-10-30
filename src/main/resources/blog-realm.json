@@ -1,0 +1,46 @@
+{
+  "realm": "blog",
+  "enabled": true,
+  "sslRequired": "none",
+  "accessTokenLifespan": 300,
+  "roles": {
+    "realm": [
+      { "name": "user", "description": "Angemeldeter Benutzer: Blogs und Kommentare schreiben" },
+      { "name": "admin", "description": "Administrator: zusätzlich Benutzer verwalten, alle Blogs ändern" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "backend-service",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": ["http://localhost:8080/*", "http://localhost:4200/*"],
+      "webOrigins": ["+"]
+    }
+  ],
+  "users": [
+    {
+      "username": "alice",
+      "enabled": true,
+      "email": "alice@example.com",
+      "emailVerified": true,
+      "firstName": "Alice",
+      "lastName": "Admin",
+      "credentials": [{ "type": "password", "value": "1234", "temporary": false }],
+      "realmRoles": ["admin", "user"]
+    },
+    {
+      "username": "bob",
+      "enabled": true,
+      "email": "bob@example.com",
+      "emailVerified": true,
+      "firstName": "Bob",
+      "lastName": "User",
+      "credentials": [{ "type": "password", "value": "bobs_password", "temporary": false }],
+      "realmRoles": ["user"]
+    }
+  ]
+}

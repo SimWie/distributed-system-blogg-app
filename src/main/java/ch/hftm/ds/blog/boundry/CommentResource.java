@@ -10,6 +10,8 @@ import ch.hftm.ds.blog.control.UserService;
 import ch.hftm.ds.blog.entity.Blog;
 import ch.hftm.ds.blog.entity.Comment;
 import ch.hftm.ds.blog.entity.User;
+import jakarta.annotation.security.PermitAll;
+import jakarta.annotation.security.RolesAllowed;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
@@ -22,8 +24,13 @@ import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.Response;
 
+/**
+ * Lesen ist öffentlich, Schreiben braucht die Rolle {@code user} oder
+ * {@code admin} (siehe Berechtigungskonzept im README).
+ */
 @Path("blogs/{blogId}/comments")
 @ApplicationScoped
+@RolesAllowed({ "user", "admin" })
 public class CommentResource {
 
     @Inject
@@ -36,6 +43,7 @@ public class CommentResource {
     UserService userService;
 
     @GET
+    @PermitAll
     public Response getComments(@PathParam("blogId") Long blogId) {
         Blog blog = blogService.getBlogById(blogId);
         if (blog == null) {

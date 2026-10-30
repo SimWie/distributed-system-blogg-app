@@ -12,6 +12,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.security.TestSecurity;
 
 /**
  * REST-Level-Tests für die verschachtelte Kommentar-Ressource
@@ -19,6 +20,7 @@ import io.quarkus.test.junit.QuarkusTest;
  * und Response-DTO {@code CommentDTO}.
  */
 @QuarkusTest
+@TestSecurity(user = "alice", roles = { "admin", "user" })
 public class CommentResourceTest {
 
     private Long userId;
@@ -27,7 +29,7 @@ public class CommentResourceTest {
     @BeforeEach
     void createUserAndBlog() {
         userId = TestData.createUser();
-        blogId = TestData.createBlog("Blog for comments", "content", userId);
+        blogId = TestData.createBlog("Blog for comments", "content");
     }
 
     @Test

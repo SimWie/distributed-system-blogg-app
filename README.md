@@ -526,8 +526,16 @@ Swagger UI ist auch im Container aktiv: http://localhost:8080/q/swagger-ui (Toke
 
 Das Image wird über Maven gebaut (Extension `quarkus-container-image-docker`). Registry, Name und Tag stehen in `application.properties` (`ghcr.io/simwie/blog-backend:latest`), das Label `org.opencontainers.image.source` verknüpft das Package mit diesem Repository.
 
+Das Image wird für **`linux/amd64` und `linux/arm64`** gebaut (`quarkus.docker.buildx.platform`), damit es auf Intel/AMD-Rechnern (z. B. Windows) und auf Apple-Silicon-Macs läuft. Docker wählt beim Download automatisch die passende Variante. Ein Multi-Platform-Image wird per `docker buildx` gebaut und direkt in die Registry gepusht (vorher `docker login ghcr.io`, siehe unten):
+
 ```bash
-./mvnw package -DskipTests -Dquarkus.container-image.build=true
+./mvnw package -DskipTests -Dquarkus.container-image.build=true -Dquarkus.container-image.push=true
+```
+
+Enthaltene Plattformen prüfen:
+
+```bash
+docker buildx imagetools inspect ghcr.io/simwie/blog-backend:latest
 ```
 
 Alternativ manuell mit dem von Quarkus generierten Dockerfile:
@@ -537,12 +545,13 @@ Alternativ manuell mit dem von Quarkus generierten Dockerfile:
 docker build -f src/main/docker/Dockerfile.jvm -t ghcr.io/simwie/blog-backend:latest .
 ```
 
-Veröffentlichen auf GitHub Packages (braucht ein Personal Access Token mit Scope `write:packages`):
+Anmelden bei GitHub Packages: Es braucht ein Personal Access Token (classic) mit Scope `write:packages` (https://github.com/settings/tokens/new?scopes=write:packages), nicht das GitHub-Passwort. Token kopieren, dann:
 
 ```bash
-docker login ghcr.io -u SimWie
-docker push ghcr.io/simwie/blog-backend:latest
+pbpaste | docker login ghcr.io -u SimWie --password-stdin
 ```
+
+Ein nur lokal gebautes Image (manueller `docker build`, nur für die eigene Architektur) wird mit `docker push ghcr.io/simwie/blog-backend:latest` hochgeladen.
 
 Danach ist das Package unter https://github.com/SimWie?tab=packages sichtbar. Neue Packages sind zuerst privat. Unter *Package settings → Change visibility* auf **Public** stellen, damit `docker compose up` ohne Login funktioniert.
 

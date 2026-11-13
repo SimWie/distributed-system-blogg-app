@@ -15,7 +15,7 @@ public class BlogService {
 
     public List<Blog> getBlogs() {
         var blogs = blogRepository.listAll();
-        Log.info("Returning " + blogs.size() + " blogs");
+        Log.debugf("Returning %d blogs", blogs.size());
         return blogs;
     }
 
@@ -29,7 +29,7 @@ public class BlogService {
             return getBlogs();
         }
         var blogs = blogRepository.list("lower(title) like ?1", "%" + search.toLowerCase() + "%");
-        Log.info("Returning " + blogs.size() + " blogs matching search '" + search + "'");
+        Log.debugf("Returning %d blogs matching search '%s'", blogs.size(), search);
         return blogs;
     }
 
@@ -39,8 +39,8 @@ public class BlogService {
 
     @Transactional
     public void addBlog(Blog blog) {
-        Log.info("Adding blog " + blog.getTitle());
         blogRepository.persist(blog);
+        Log.debugf("Persisted blog %d", blog.getId());
     }
 
     /**
@@ -55,13 +55,14 @@ public class BlogService {
         if (existing == null) return null;
         existing.setTitle(title);
         existing.setContent(content);
-        Log.info("Updating blog " + id);
+        Log.debugf("Updated blog %d", id);
         return existing;
     }
 
     @Transactional
     public boolean deleteBlog(Long id) {
-        Log.info("Deleting blog " + id);
-        return blogRepository.deleteById(id);
+        boolean deleted = blogRepository.deleteById(id);
+        Log.debugf("Delete blog %d: %s", id, deleted ? "deleted" : "not found");
+        return deleted;
     }
 }

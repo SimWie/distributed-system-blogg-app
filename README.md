@@ -2,6 +2,8 @@
 
 Ein Web-API-Backend für ein Blog-System, entwickelt im Rahmen des Kurses zu verteilten Systemen an der HFTM. Das Projekt basiert auf [Quarkus](https://quarkus.io/) und demonstriert typische Konzepte verteilter Systeme wie synchrone HTTP-Kommunikation, Authentifizierung und Cloud Deployment.
 
+**Schnellstart:** Das Backend gibt es als Container-Image auf GitHub Packages (`ghcr.io/simwie/blog-backend:latest`). Wie man es zusammen mit Keycloak startet und mit HTTPie testet, steht unter [System als Container starten](#system-als-container-starten-ghcr).
+
 ---
 
 ## REST-Design
@@ -158,17 +160,17 @@ Grundsatz: **Lesen ist öffentlich, Schreiben braucht ein Login, die Benutzerver
 
 Die Rollen sind in Keycloak nicht hierarchisch. Deshalb werden in `@RolesAllowed` beide Rollen aufgezählt (`@RolesAllowed({"user", "admin"})`), damit auch ein Admin ohne zusätzliche `user`-Rolle schreiben darf.
 
-Im Dev- und Test-Modus stellt Quarkus Dev Services einen Keycloak bereit (Port `8088` im Dev-Modus). Der Realm `blog` wird aus [`src/main/resources/blog-realm.json`](src/main/resources/blog-realm.json) angelegt (`quarkus.keycloak.devservices.realm-path`) und enthält die Rollen `user`/`admin`, den Client `backend-service` (Secret `secret`) und diese Benutzer:
+Der Realm `blog` ist in [`keycloak/blog-realm.json`](keycloak/blog-realm.json) definiert. Dieselbe Datei verwenden die Quarkus Dev Services (Dev- und Test-Modus, `quarkus.keycloak.devservices.realm-path`) und der eigene Keycloak-Container aus `docker-compose.yml`. Sie enthält die Rollen `user`/`admin`, den Client `backend-service` (Secret `secret`) und diese Benutzer:
 
 | Benutzer | Passwort | Rollen |
 |----------|----------|--------|
-| `alice` | `1234` | `admin`, `user` |
-| `bob` | `bobs_password` | `user` |
+| `alice` | `alice` | `admin`, `user` |
+| `bob` | `bob` | `user` |
 
 Zwei Einstellungen in `application.properties` sind dabei wichtig, sonst startet Keycloak zwar, aber der Realm fehlt bzw. ist über HTTP nicht erreichbar (Fehler `HTTPS required`, im Backend dann `500 OIDC Server is not available`):
 
 - `quarkus.keycloak.devservices.disable-https=true`: schaltet im `master`-Realm die HTTPS-Pflicht ab, damit Dev Services sich als Admin anmelden und den Realm anlegen kann.
-- `"sslRequired": "none"` in `blog-realm.json`: dasselbe für den Realm `blog`, damit Backend und Clients Tokens per HTTP holen können.
+- `"sslRequired": "none"` in `keycloak/blog-realm.json`: dasselbe für den Realm `blog`, damit Backend und Clients Tokens per HTTP holen können.
 
 Keycloak verlangt HTTPS für Anfragen, die es nicht als lokal einstuft. Je nach Docker-Desktop-Netzwerk gelten Anfragen vom Mac in den Container nicht als lokal. Beide Einstellungen sind nur für die lokale Entwicklung gedacht.
 
@@ -217,10 +219,10 @@ Das Backend prüft Access-Tokens von Keycloak (`quarkus-oidc`). Es gibt zwei Var
 
 | | Variante A: Dev Services (Standard) | Variante B: eigener Keycloak-Container |
 |---|---|---|
-| Start | `./mvnw quarkus:dev` | `docker compose up -d keycloak`, dann Quarkus mit `auth-server-url` starten |
+| Start | `./mvnw quarkus:dev` | `docker compose up -d keycloak`, dann Quarkus mit `auth-server-url` starten (oder als [Container](#system-als-container-starten-ghcr)) |
 | Keycloak-URL | http://localhost:8088 | http://localhost:8180 |
-| Realm-Definition | [`src/main/resources/blog-realm.json`](src/main/resources/blog-realm.json) | [`keycloak/blog-realm.json`](keycloak/blog-realm.json) |
-| Client | `backend-service` (Secret `secret`) | `blog-api` (Public Client, ohne Secret) |
+| Realm-Definition | [`keycloak/blog-realm.json`](keycloak/blog-realm.json) | dieselbe Datei |
+| Client | `backend-service` (Secret `secret`) | dito |
 | Manuelle Konfiguration | keine | keine (Realm wird beim Start importiert) |
 
 **Voraussetzungen:** Java 21+, Docker, [HTTPie](https://httpie.io/) (`brew install httpie`)
@@ -237,15 +239,15 @@ Benutzer:
 
 | Benutzer | Passwort | Rollen | Darf |
 |----------|----------|--------|------|
-| `alice` | `1234` | `admin`, `user` | alles, auch fremde Blogs ändern/löschen und `/users` verwalten |
-| `bob` | `bobs_password` | `user` | Blogs und Kommentare schreiben, nur eigene Blogs ändern/löschen |
+| `alice` | `alice` | `admin`, `user` | alles, auch fremde Blogs ändern/löschen und `/users` verwalten |
+| `bob` | `bob` | `user` | Blogs und Kommentare schreiben, nur eigene Blogs ändern/löschen |
 
 Access-Token holen (hier für `bob`, für `alice` Benutzername und Passwort austauschen):
 
 ```bash
 TOKEN=$(http --form POST :8088/realms/blog/protocol/openid-connect/token \
   client_id=backend-service client_secret=secret grant_type=password \
-  username=bob password=bobs_password | python3 -c 'import sys, json; print(json.load(sys.stdin)["access_token"])')
+  username=bob password=bob | python3 -c 'import sys, json; print(json.load(sys.stdin)["access_token"])')
 ```
 
 Beispielaufrufe mit HTTPie (Startdaten: Blogs 1 und 2 gehören `alice`, Blog 3 gehört `bob`):
@@ -293,23 +295,23 @@ Keycloak aus [`docker-compose.yml`](docker-compose.yml) starten (Details siehe [
 docker compose up -d keycloak
 ```
 
-Quarkus gegen diesen Keycloak starten. Sobald `quarkus.oidc.auth-server-url` gesetzt ist, startet Quarkus keinen Dev-Services-Keycloak:
+Quarkus im Dev-Modus gegen diesen Keycloak starten. Sobald `quarkus.oidc.auth-server-url` gesetzt ist, startet Quarkus keinen Dev-Services-Keycloak. Client-ID und Secret kommen aus `application.properties`:
 
 ```bash
-./mvnw quarkus:dev -Dquarkus.oidc.auth-server-url=http://localhost:8180/realms/blog -Dquarkus.oidc.client-id=blog-api
+./mvnw quarkus:dev -Dquarkus.oidc.auth-server-url=http://localhost:8180/realms/blog
 ```
 
-Access-Token holen (Public Client, daher ohne `client_secret`):
+Im Prod-Modus (JAR oder Container) ist dieser Keycloak der Standard, siehe [System als Container starten](#system-als-container-starten-ghcr).
+
+Access-Token holen:
 
 ```bash
 TOKEN=$(http --form POST :8180/realms/blog/protocol/openid-connect/token \
-  client_id=blog-api grant_type=password username=admin1 password=admin1 \
-  | python3 -c 'import sys, json; print(json.load(sys.stdin)["access_token"])')
+  client_id=backend-service client_secret=secret grant_type=password \
+  username=bob password=bob | python3 -c 'import sys, json; print(json.load(sys.stdin)["access_token"])')
 ```
 
-Danach funktionieren dieselben Beispielaufrufe wie bei Variante A. Benutzer in diesem Realm (Passwort = Benutzername): `admin1` (`admin`), `author1` (`author`), `reader1` (`reader`).
-
-> **Achtung:** [`keycloak/blog-realm.json`](keycloak/blog-realm.json) enthält noch die Rollen aus dem ersten Berechtigungskonzept (`reader`, `author`, `admin`). Das Backend erwartet `user` oder `admin`. Mit diesem Realm hat deshalb nur `admin1` Schreibzugriff, `author1` und `reader1` erhalten `403`.
+Danach funktionieren dieselben Beispielaufrufe und Benutzer wie bei Variante A.
 
 ### Swagger UI
 
@@ -328,8 +330,6 @@ Als Identity Provider wird [Keycloak](https://www.keycloak.org/) verwendet. Die 
 
 - [`docker-compose.yml`](docker-compose.yml): Keycloak `26.8.1` im Dev-Modus auf Port `8180` (8080 ist vom Quarkus-Backend belegt)
 - [`keycloak/blog-realm.json`](keycloak/blog-realm.json): Realm-Export, wird beim Start automatisch importiert (`--import-realm`)
-
-> **Hinweis:** Im Dev-Modus verwendet das Backend den Keycloak aus den Quarkus Dev Services (Port `8088`, Benutzer `alice`/`bob`, siehe [Berechtigungskonzept](#berechtigungskonzept)), nicht diesen Docker-Compose-Keycloak. Der Realm-Export unten enthält noch die früheren Rollen `reader`/`author`/`admin`. Tokens von `reader1`/`author1` erhalten vom Backend deshalb `403`, nur `admin1` hat Zugriff.
 
 **Voraussetzungen:** Docker, [HTTPie](https://httpie.io/) (`brew install httpie`)
 
@@ -351,91 +351,237 @@ docker compose down
 
 Da kein Volume für die Datenbank verwendet wird, startet Keycloak nach `docker compose down` wieder mit dem Stand aus `blog-realm.json`. Änderungen in der Admin-Konsole gehen dabei verloren und müssen bei Bedarf in die JSON-Datei übernommen werden.
 
+Nach einer Änderung an `blog-realm.json` reicht `docker compose restart` nicht: Der Realm existiert dann schon im Container und wird nicht erneut importiert. Den Container neu erstellen:
+
+```bash
+docker compose up -d --force-recreate keycloak
+```
+
 ### Was importiert wird
 
 | Element | Wert |
 |---------|------|
 | Admin-Konsole | http://localhost:8180, Login `admin` / `admin` (nur lokal) |
-| Realm | `blog` |
-| Realm-Rollen | `reader`, `author`, `admin` |
-| Client | `blog-api`: Public Client (kein Client Secret), Direct Access Grants (Password Grant) aktiviert, Redirect-URIs für `localhost:4200` und `localhost:8080` |
+| Realm | `blog`, `sslRequired: none` (HTTP erlaubt, nur lokal) |
+| Realm-Rollen | `user`, `admin` |
+| Client | `backend-service`: Confidential Client mit Secret `secret`, Direct Access Grants (Password Grant) aktiviert |
+| Benutzer | `alice` / `alice` (`admin`, `user`), `bob` / `bob` (`user`) |
 
-Test-Benutzer (Passwort = Benutzername, nur für die lokale Entwicklung):
+### Hostname und Docker-Netzwerk
 
-| Benutzer | Passwort | Realm-Rolle |
-|----------|----------|-------------|
-| `reader1` | `reader1` | `reader` |
-| `author1` | `author1` | `author` |
-| `admin1`  | `admin1`  | `admin` |
+In `docker-compose.yml` sind zwei Hostname-Einstellungen gesetzt:
 
-### Access-Token mit HTTPie abholen
+- `KC_HOSTNAME: http://localhost:8180`: Der Issuer (`iss`) im Token ist immer `http://localhost:8180/realms/blog`, egal über welche URL das Token geholt wurde.
+- `KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"`: Interne Endpunkte wie die Schlüssel (JWKS) bleiben unter der angefragten URL erreichbar, z. B. `http://keycloak:8080/...` aus dem Docker-Netzwerk.
 
-```bash
-http --form POST :8180/realms/blog/protocol/openid-connect/token \
-  client_id=blog-api grant_type=password username=author1 password=author1
-```
-
-Antwort (`200 OK`, Tokens gekürzt):
-
-```json
-{
-  "access_token": "eyJhbGciOiJSUzI1NiIs...",
-  "expires_in": 300,
-  "refresh_expires_in": 1800,
-  "refresh_token": "eyJhbGciOiJIUzI1NiIs...",
-  "token_type": "Bearer",
-  "scope": "profile email"
-}
-```
-
-Nur das Access-Token in eine Variable übernehmen (z. B. für spätere API-Aufrufe mit `Authorization: Bearer $TOKEN`):
-
-```bash
-TOKEN=$(http --form POST :8180/realms/blog/protocol/openid-connect/token \
-  client_id=blog-api grant_type=password username=author1 password=author1 \
-  | python3 -c 'import sys, json; print(json.load(sys.stdin)["access_token"])')
-```
-
-Ein neues Access-Token über das Refresh-Token (ohne erneute Passworteingabe):
-
-```bash
-http --form POST :8180/realms/blog/protocol/openid-connect/token \
-  client_id=blog-api grant_type=refresh_token refresh_token=$REFRESH_TOKEN
-```
+Ohne diese Einstellungen hätte ein Token vom Host den Issuer `localhost:8180`, das Backend im Container würde Keycloak aber unter `keycloak:8080` kennen. Das Backend lehnt das Token dann wegen des falschen Issuers mit `401` ab.
 
 ### Rolle im Token prüfen (jwt.io)
 
-Das `access_token` im Debugger auf [jwt.io](https://jwt.io/) einfügen. Im Payload steht die Rolle unter `realm_access.roles`. Auszug für `author1`:
+Token wie unter [Variante B](#variante-b-eigener-keycloak-container) holen und im Debugger auf [jwt.io](https://jwt.io/) einfügen. Im Payload stehen die Rollen unter `realm_access.roles`. Auszug für `bob`:
 
 ```json
 {
   "iss": "http://localhost:8180/realms/blog",
-  "azp": "blog-api",
-  "typ": "Bearer",
+  "azp": "backend-service",
   "realm_access": {
-    "roles": ["author"]
+    "roles": ["user"]
   },
-  "scope": "profile email",
-  "preferred_username": "author1"
+  "preferred_username": "bob"
 }
 ```
 
-Verifiziert für alle drei Test-Benutzer:
-
 | Benutzer | `realm_access.roles` | `iss` | Gültigkeit (`exp - iat`) |
 |----------|----------------------|-------|--------------------------|
-| `reader1` | `["reader"]` | `http://localhost:8180/realms/blog` | 300 s |
-| `author1` | `["author"]` | `http://localhost:8180/realms/blog` | 300 s |
-| `admin1`  | `["admin"]`  | `http://localhost:8180/realms/blog` | 300 s |
-
-Wie Quarkus gegen diesen Keycloak gestartet wird, steht unter [Variante B: eigener Keycloak-Container](#variante-b-eigener-keycloak-container).
+| `alice` | `["admin", "user"]` | `http://localhost:8180/realms/blog` | 300 s |
+| `bob` | `["user"]` | `http://localhost:8180/realms/blog` | 300 s |
 
 ### Stolpersteine
 
 - Keycloak ist erst nach einigen Sekunden bereit. Vorher liefert der Token-Endpunkt `Connection refused` oder `404`.
 - `invalid_grant` / `Invalid user credentials`: falsches Passwort. Beim Refresh bedeutet `invalid_grant`, dass das Refresh-Token abgelaufen ist (nach 30 Minuten).
+- `invalid_client`: Client-ID oder Secret falsch, oder der Container läuft noch mit einem älteren Realm-Stand (dann neu erstellen, siehe oben).
 - Platzhalter wie `<token>` nicht wörtlich übernehmen: zsh interpretiert `<` als Eingabeumleitung.
-- Der Issuer (`iss`) hängt von der URL ab, über die das Token geholt wurde. Das Backend muss Keycloak unter derselben URL (`http://localhost:8180`) ansprechen, sonst wird das Token abgelehnt.
+
+---
+
+## System als Container starten (GHCR)
+
+Das Backend ist als Container-Image auf GitHub Packages veröffentlicht:
+
+```
+ghcr.io/simwie/blog-backend:latest
+```
+
+### Umsysteme
+
+| System | Wie es läuft | Konfiguration |
+|--------|--------------|---------------|
+| Backend | Container `ghcr.io/simwie/blog-backend:latest`, Port `8080` | über Umgebungsvariablen (siehe unten) |
+| Keycloak | Container `quay.io/keycloak/keycloak:26.8.1`, Port `8180` | Realm `blog` wird beim Start aus [`keycloak/blog-realm.json`](keycloak/blog-realm.json) importiert, keine manuelle Konfiguration |
+| Datenbank | H2 In-Memory **im Backend-Container**, kein eigener Container | Schema wird beim Start angelegt, Startdaten (2 Benutzer, 3 Blogs, 3 Kommentare) werden geladen. Daten gehen beim Neustart verloren |
+
+### Starten
+
+Voraussetzungen: Docker, [HTTPie](https://httpie.io/) (`brew install httpie`), dieses Repository (für `docker-compose.yml` und die Realm-Datei).
+
+```bash
+git clone https://github.com/SimWie/distributed-system-blogg-app.git
+cd distributed-system-blogg-app
+docker compose up -d
+```
+
+Damit starten Keycloak und das Backend im selben Docker-Netzwerk. Keycloak braucht ca. 20–30 Sekunden. Prüfen:
+
+```bash
+http :8180/realms/blog/.well-known/openid-configuration
+http :8080/blogs
+```
+
+Logs ansehen und stoppen:
+
+```bash
+docker compose logs -f backend
+```
+
+```bash
+docker compose down
+```
+
+Ist Port 8080 schon belegt, kann der Host-Port angepasst werden: `BACKEND_PORT=8081 docker compose up -d`.
+
+### Konfiguration über Umgebungsvariablen
+
+Jede Quarkus-Eigenschaft lässt sich beim Start überschreiben: Grossbuchstaben, `.` und `-` werden zu `_`, z. B. `quarkus.oidc.auth-server-url` → `QUARKUS_OIDC_AUTH_SERVER_URL`. In `docker-compose.yml` gesetzt:
+
+| Variable | Wert | Zweck |
+|----------|------|-------|
+| `QUARKUS_OIDC_AUTH_SERVER_URL` | `http://keycloak:8080/realms/blog` | Keycloak im Docker-Netzwerk über den Servicenamen (Container erreichen sich nicht über `localhost`) |
+| `QUARKUS_OIDC_CLIENT_ID` | `backend-service` | Client im Realm `blog` |
+| `QUARKUS_OIDC_CREDENTIALS_SECRET` | `${OIDC_CLIENT_SECRET:-secret}` | Client-Secret, aus der Umgebung oder einer lokalen `.env`-Datei (`OIDC_CLIENT_SECRET=...`), Default `secret` |
+
+Tokens werden vom Host über `localhost:8180` geholt, das Backend spricht Keycloak über `keycloak:8080` an. Damit der Issuer trotzdem passt, setzt `docker-compose.yml` `KC_HOSTNAME` (siehe [Hostname und Docker-Netzwerk](#hostname-und-docker-netzwerk)).
+
+Ohne Docker Compose, mit `docker run` im Netzwerk, das Compose für Keycloak anlegt:
+
+```bash
+docker compose up -d keycloak
+docker run -i --rm -p 8080:8080 --network distributed-system-blogg-app_default \
+  -e QUARKUS_OIDC_AUTH_SERVER_URL=http://keycloak:8080/realms/blog \
+  -e QUARKUS_OIDC_CLIENT_ID=backend-service \
+  -e QUARKUS_OIDC_CREDENTIALS_SECRET=secret \
+  ghcr.io/simwie/blog-backend:latest
+```
+
+### Beispielaufrufe mit HTTPie
+
+Benutzer: `alice` / `alice` (Rollen `admin`, `user`) und `bob` / `bob` (Rolle `user`). Startdaten: Blogs 1 und 2 gehören `alice`, Blog 3 gehört `bob`.
+
+Access-Tokens bei Keycloak holen:
+
+```bash
+ALICE=$(http --form -b POST :8180/realms/blog/protocol/openid-connect/token \
+  client_id=backend-service client_secret=secret grant_type=password username=alice password=alice \
+  | python3 -c 'import sys, json; print(json.load(sys.stdin)["access_token"])')
+
+BOB=$(http --form -b POST :8180/realms/blog/protocol/openid-connect/token \
+  client_id=backend-service client_secret=secret grant_type=password username=bob password=bob \
+  | python3 -c 'import sys, json; print(json.load(sys.stdin)["access_token"])')
+```
+
+Token übergeben als Header `Authorization: Bearer <token>`:
+
+```bash
+# Öffentlich, ohne Token -> 200
+http :8080/blogs
+
+# Schreiben ohne Token -> 401
+http POST :8080/blogs title="Ohne Login" content="..."
+
+# bob legt einen Blog an -> 201, Autor ist bob (aus dem Token)
+http POST :8080/blogs "Authorization: Bearer $BOB" title="Mein Post" content="Inhalt"
+
+# bob ändert den Blog von alice -> 403
+http PUT :8080/blogs/1 "Authorization: Bearer $BOB" title="Fremd" content="..."
+
+# bob ändert seinen eigenen Blog -> 200
+http PUT :8080/blogs/3 "Authorization: Bearer $BOB" title="Neuer Titel" content="Neuer Inhalt"
+
+# Benutzerverwaltung: bob -> 403, alice -> 200
+http :8080/users "Authorization: Bearer $BOB"
+http :8080/users "Authorization: Bearer $ALICE"
+
+# alice (admin) löscht den Blog von bob -> 204
+http DELETE :8080/blogs/3 "Authorization: Bearer $ALICE"
+
+# Kommentar schreiben -> 201
+http POST ":8080/blogs/1/comments?userId=2" "Authorization: Bearer $BOB" content="Guter Post!"
+```
+
+Access-Tokens sind 5 Minuten gültig. Danach liefert das Backend `401`, und das Token muss neu geholt werden.
+
+Swagger UI ist auch im Container aktiv: http://localhost:8080/q/swagger-ui (Token über **Authorize** einfügen, siehe [Swagger UI](#swagger-ui)).
+
+### Image bauen und veröffentlichen
+
+Das Image wird über Maven gebaut (Extension `quarkus-container-image-docker`). Registry, Name und Tag stehen in `application.properties` (`ghcr.io/simwie/blog-backend:latest`), das Label `org.opencontainers.image.source` verknüpft das Package mit diesem Repository.
+
+```bash
+./mvnw package -DskipTests -Dquarkus.container-image.build=true
+```
+
+Alternativ manuell mit dem von Quarkus generierten Dockerfile:
+
+```bash
+./mvnw package -DskipTests
+docker build -f src/main/docker/Dockerfile.jvm -t ghcr.io/simwie/blog-backend:latest .
+```
+
+Veröffentlichen auf GitHub Packages (braucht ein Personal Access Token mit Scope `write:packages`):
+
+```bash
+docker login ghcr.io -u SimWie
+docker push ghcr.io/simwie/blog-backend:latest
+```
+
+Danach ist das Package unter https://github.com/SimWie?tab=packages sichtbar. Neue Packages sind zuerst privat. Unter *Package settings → Change visibility* auf **Public** stellen, damit `docker compose up` ohne Login funktioniert.
+
+### Ohne Container: JAR im Prod-Modus
+
+`./mvnw package` erzeugt ein Fast-JAR in `target/quarkus-app/`: `quarkus-run.jar` ist nur die Startdatei, `lib/`, `app/` und `quarkus/` gehören dazu und müssen mitkopiert werden. Ein einzelnes JAR mit allem drin (Uber-JAR) gibt es mit `-Dquarkus.package.jar.type=uber-jar`. Für Container ist das Fast-JAR besser, weil Docker die Abhängigkeiten in einem eigenen Layer cachen kann.
+
+```bash
+docker compose up -d keycloak
+./mvnw package -DskipTests
+java -jar target/quarkus-app/quarkus-run.jar
+```
+
+Im Prod-Profil (JAR und Container) gilt:
+
+| Einstellung | Wert im Prod-Profil |
+|-------------|---------------------|
+| Datenbank | H2 In-Memory (`jdbc:h2:mem:blogdb`), Schema `drop-and-create` |
+| Keycloak | Default `http://localhost:8180/realms/blog`, Client `backend-service` / `secret` |
+| Swagger UI | aktiv (`quarkus.swagger-ui.always-include=true`) |
+| Logging | Level `INFO` für `ch.hftm.ds.blog` (siehe [Logging](#logging)) |
+
+---
+
+## Logging
+
+Logging erfolgt durchgängig mit `io.quarkus.logging.Log`. Die Log-Level sind nach Bedeutung eingeteilt:
+
+| Level | Wofür | Beispiel |
+|-------|-------|----------|
+| `INFO` | Systemzustand und Geschäftsereignisse, inkl. ausführendem Benutzer | `Startup data loaded: 2 users, 3 blogs, 3 comments`, `Blog 4 'Mein Post' created by bob`, `Blog 3 deleted by alice` |
+| `WARN` | Verweigerte Zugriffe und ungültige Requests | `Access denied: bob tried to modify blog 1 of another author`, `Rejected invalid request: addBlog.newBlog.title title must not be blank` |
+| `ERROR` | Unerwartete Fehler, mit Stacktrace | `Unexpected error: ...` |
+| `DEBUG` | Technische Details: Lesezugriffe, Persistenz, 404 | `Returning 3 blogs`, `Blog 999 not found` |
+
+- **Wo:** Geschäftsereignisse loggen die Resources, weil nur dort der angemeldete Benutzer (`SecurityIdentity`) bekannt ist. Die Services loggen technische Details auf `DEBUG`.
+- **Fehler:** `UnexpectedExceptionMapper` fängt unerwartete Exceptions ab, loggt sie mit Stacktrace als `ERROR` und liefert dem Client nur `500` mit `{"message": "Internal server error"}`, ohne interne Details. Bewusste HTTP-Fehler (z. B. `404` für unbekannte Pfade) werden unverändert weitergegeben.
+- **Konfiguration** (`application.properties`): `INFO` für `ch.hftm.ds.blog`, im Dev-Modus `DEBUG`. Ein anderes Level im Container: `-e QUARKUS_LOG_CATEGORY__CH_HFTM_DS_BLOG__LEVEL=WARN`.
+- **Datenschutz:** Es werden Benutzernamen und IDs geloggt, aber keine Tokens, Passwörter oder Blog-Inhalte (nur Titel).
 
 ---
 
@@ -444,7 +590,9 @@ Wie Quarkus gegen diesen Keycloak gestartet wird, steht unter [Variante B: eigen
 ### Aktuell implementiert
 - Vollständiges CRUD für `users` und `blogs` (GET, POST, PUT, DELETE)
 - Verschachtelte Kommentar-Ressource unter `blogs/{blogId}/comments` (GET, POST, DELETE)
-- Persistenz über Hibernate ORM mit Panache (MySQL, via Quarkus Dev Services automatisch bereitgestellt)
+- Persistenz über Hibernate ORM mit Panache (H2, im Dev-/Test-Modus via Quarkus Dev Services, im Prod-Modus In-Memory)
+- Prod-Modus als JAR oder Container im Docker-Netzwerk mit eigenem Keycloak, Image auf GitHub Packages, Start des ganzen Systems mit `docker compose up -d` (siehe [System als Container starten](#system-als-container-starten-ghcr))
+- Durchgängiges Logging mit `io.quarkus.logging.Log` nach Level (Geschäftsereignisse, verweigerte Zugriffe, Fehler) und zentrales Abfangen unerwarteter Fehler (siehe [Logging](#logging))
 - Such-Filter über Query-Parameter (`GET /blogs?search=...`)
 - Bean Validation auf je einem Pflichtfeld pro Request (`User.username` sowie die Felder von `NewBlogDTO`, `UpdateBlogDTO`, `NewCommentDTO`) mit `400 Bad Request` und aussagekräftiger Fehlermeldung bei Verletzung
 - Einheitliche, aussagekräftige Fehler-Responses (`404`/`400` mit `{"message": "..."}`) für alle Ressourcen
@@ -469,7 +617,7 @@ Gemäss Aufgabenstellung sind folgende Themen erst für kommende Einheiten vorge
 
 ## Projekt im Entwicklungsmodus starten
 
-**Voraussetzungen:** Java 21+, Maven, Docker (für Quarkus Dev Services / die automatisch gestartete MySQL-Testdatenbank)
+**Voraussetzungen:** Java 21+, Maven, Docker (für den Keycloak-Container der Quarkus Dev Services)
 
 ```bash
 # Repository klonen
@@ -482,7 +630,7 @@ cd distributed-system-blogg-app
 
 Die Applikation läuft danach unter `http://localhost:8080`.
 Das Quarkus Dev UI ist erreichbar unter `http://localhost:8080/q/dev/`.
-Da `application.properties` keine Datenbankverbindung konfiguriert, startet Quarkus Dev Services automatisch einen passenden MySQL-Container.
+Da `application.properties` für Dev und Test keine Datenbankverbindung konfiguriert, startet Quarkus Dev Services automatisch eine H2-Datenbank (In-Memory, ohne Container) sowie einen Keycloak-Container.
 
 ---
 
@@ -493,7 +641,7 @@ Endpunkte können direkt im Browser, mit `curl` oder einem Tool wie Postman gete
 ```bash
 TOKEN=$(curl -s -X POST http://localhost:8088/realms/blog/protocol/openid-connect/token \
   -d client_id=backend-service -d client_secret=secret \
-  -d grant_type=password -d username=bob -d password=bobs_password \
+  -d grant_type=password -d username=bob -d password=bob \
   | python3 -c 'import sys, json; print(json.load(sys.stdin)["access_token"])')
 ```
 
@@ -537,7 +685,7 @@ Siehe [REST-Design](#rest-design) oben für die vollständige Übersicht aller M
 
 ## Tests
 
-Das Backend wird automatisiert mit [REST Assured](https://rest-assured.io/) und `@QuarkusTest` getestet. Die Tests starten die Applikation inkl. MySQL-Testdatenbank (Dev Services, Docker muss laufen) und senden echte HTTP-Requests.
+Das Backend wird automatisiert mit [REST Assured](https://rest-assured.io/) und `@QuarkusTest` getestet. Die Tests starten die Applikation inkl. H2-Testdatenbank und Keycloak (Dev Services, Docker muss laufen) und senden echte HTTP-Requests.
 
 - `BlogServiceTest` – Unit-/Integrationstests der Service-Klassen (`BlogService`, `UserService`, `CommentService`) direkt gegen die Datenbank.
 - `BlogResourceTest` – REST-Assured-Tests gegen `/blogs`. Deckt die Mindestanforderungen des Auftrags ab:

@@ -47,5 +47,6 @@ public class StartupData {
         commentService.addComment(new Comment("Super Post, danke!", blog1, bob));
         commentService.addComment(new Comment("Ich stimme zu, Quarkus ist wirklich toll.", blog2, bob));
         commentService.addComment(new Comment("Sehr interessant!", blog3, alice));
+        Log.info("Startup data loaded: 2 users, 3 blogs, 3 comments");
     }
 }

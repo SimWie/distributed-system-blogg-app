@@ -9,6 +9,7 @@ import ch.hftm.ds.blog.control.BlogService;
 import ch.hftm.ds.blog.control.UserService;
 import ch.hftm.ds.blog.entity.Blog;
 import ch.hftm.ds.blog.entity.User;
+import io.quarkus.logging.Log;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.PermitAll;
 import jakarta.annotation.security.RolesAllowed;
@@ -75,6 +76,7 @@ public class BlogResource {
         User author = userService.getOrCreateUser(identity.getPrincipal().getName());
         Blog blog = newBlog.toEntity(author);
         blogService.addBlog(blog);
+        Log.infof("Blog %d '%s' created by %s", blog.getId(), blog.getTitle(), author.getUsername());
         return Response.status(Response.Status.CREATED).entity(BlogDTO.from(blog)).build();
     }
 
@@ -95,6 +97,7 @@ public class BlogResource {
         if (updated == null) {
             return blogNotFound(id);
         }
+        Log.infof("Blog %d updated by %s", id, currentUser());
         return Response.ok(BlogDTO.from(updated)).build();
     }
 
@@ -115,6 +118,7 @@ public class BlogResource {
         if (!deleted) {
             return blogNotFound(id);
         }
+        Log.infof("Blog %d deleted by %s", id, currentUser());
         return Response.noContent().build();
     }
 
@@ -123,16 +127,22 @@ public class BlogResource {
             return true;
         }
         return blog.getAuthor() != null
-                && blog.getAuthor().getUsername().equals(identity.getPrincipal().getName());
+                && blog.getAuthor().getUsername().equals(currentUser());
+    }
+
+    private String currentUser() {
+        return identity.getPrincipal().getName();
     }
 
     private Response notAuthor(Long id) {
+        Log.warnf("Access denied: %s tried to modify blog %d of another author", currentUser(), id);
         return Response.status(Response.Status.FORBIDDEN)
                 .entity(new ErrorResponse("Only the author or an admin may modify blog with id " + id))
                 .build();
     }
 
     private Response blogNotFound(Long id) {
+        Log.debugf("Blog %d not found", id);
         return Response.status(Response.Status.NOT_FOUND)
                 .entity(new ErrorResponse("Blog with id " + id + " not found"))
                 .build();

@@ -10,6 +10,8 @@ import ch.hftm.ds.blog.control.UserService;
 import ch.hftm.ds.blog.entity.Blog;
 import ch.hftm.ds.blog.entity.Comment;
 import ch.hftm.ds.blog.entity.User;
+import io.quarkus.logging.Log;
+import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.PermitAll;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -41,6 +43,9 @@ public class CommentResource {
 
     @Inject
     UserService userService;
+
+    @Inject
+    SecurityIdentity identity;
 
     @GET
     @PermitAll
@@ -84,6 +89,8 @@ public class CommentResource {
         }
         Comment comment = newComment.toEntity(blog, author);
         commentService.addComment(comment);
+        Log.infof("Comment %d on blog %d created by %s (author %s)", comment.getId(), blogId,
+                identity.getPrincipal().getName(), author.getUsername());
         return Response.status(Response.Status.CREATED).entity(CommentDTO.from(comment)).build();
     }
 
@@ -92,10 +99,12 @@ public class CommentResource {
     public Response deleteComment(@PathParam("blogId") Long blogId, @PathParam("commentId") Long commentId) {
         boolean deleted = commentService.deleteComment(commentId);
         if (!deleted) {
+            Log.debugf("Comment %d not found", commentId);
             return Response.status(Response.Status.NOT_FOUND)
                     .entity(new ErrorResponse("Comment with id " + commentId + " not found"))
                     .build();
         }
+        Log.infof("Comment %d on blog %d deleted by %s", commentId, blogId, identity.getPrincipal().getName());
         return Response.noContent().build();
     }
 }

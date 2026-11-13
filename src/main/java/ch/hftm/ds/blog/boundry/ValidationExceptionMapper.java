@@ -2,6 +2,7 @@ package ch.hftm.ds.blog.boundry;
 
 import java.util.stream.Collectors;
 
+import io.quarkus.logging.Log;
 import jakarta.validation.ConstraintViolationException;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -25,6 +26,7 @@ public class ValidationExceptionMapper implements ExceptionMapper<ConstraintViol
         if (message.isBlank()) {
             message = "Validation failed";
         }
+        Log.warnf("Rejected invalid request: %s", message);
 
         return Response.status(Response.Status.BAD_REQUEST)
                 .entity(new ErrorResponse(message))

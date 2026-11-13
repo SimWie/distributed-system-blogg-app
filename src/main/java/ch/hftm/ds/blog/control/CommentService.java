@@ -15,7 +15,7 @@ public class CommentService {
 
     public List<Comment> getCommentsByBlogId(Long blogId) {
         var comments = commentRepository.list("blog.id", blogId);
-        Log.info("Returning " + comments.size() + " comments for blog " + blogId);
+        Log.debugf("Returning %d comments for blog %d", comments.size(), blogId);
         return comments;
     }
 
@@ -25,13 +25,14 @@ public class CommentService {
 
     @Transactional
     public void addComment(Comment comment) {
-        Log.info("Adding comment by " + comment.getAuthor().getUsername() + " on blog " + comment.getBlog().getId());
         commentRepository.persist(comment);
+        Log.debugf("Persisted comment %d on blog %d", comment.getId(), comment.getBlog().getId());
     }
 
     @Transactional
     public boolean deleteComment(Long id) {
-        Log.info("Deleting comment " + id);
-        return commentRepository.deleteById(id);
+        boolean deleted = commentRepository.deleteById(id);
+        Log.debugf("Delete comment %d: %s", id, deleted ? "deleted" : "not found");
+        return deleted;
     }
 }

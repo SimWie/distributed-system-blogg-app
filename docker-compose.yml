@@ -1,8 +1,12 @@
-# Lokale Entwicklungsumgebung: Keycloak als Identity Provider für die Blog-API.
+# Lokale Umgebung: Keycloak als Identity Provider und das Blog-Backend.
 # Nur für die Entwicklung gedacht (start-dev, einfache Passwörter).
 #
-# Start:  docker compose up -d keycloak
-# Stop:   docker compose down
+# Alles starten:      docker compose up -d
+# Nur Keycloak:       docker compose up -d keycloak   (Backend dann mit quarkus:dev)
+# Stoppen:            docker compose down
+#
+# Die Datenbank (H2 In-Memory) läuft im Backend-Container mit, es gibt keinen
+# separaten Datenbank-Container. Daten gehen beim Neustart verloren.
 services:
   keycloak:
     image: quay.io/keycloak/keycloak:26.8.1
@@ -11,9 +15,32 @@ services:
       # Zugang zur Keycloak-Admin-Konsole (http://localhost:8180)
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
       KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      # Tokens tragen immer den Issuer http://localhost:8180/realms/blog, egal ob
+      # sie vom Host (localhost:8180) oder aus dem Docker-Netzwerk (keycloak:8080)
+      # geholt werden. Ein Backend-Container kann so Tokens vom Host prüfen.
+      KC_HOSTNAME: http://localhost:8180
+      # Interne Endpunkte (JWKS, Token, Introspection) bleiben unter der URL
+      # erreichbar, über die angefragt wurde, z. B. http://keycloak:8080.
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
     ports:
       # Port 8180, weil 8080 vom Quarkus-Backend belegt ist.
       - "127.0.0.1:8180:8080"
     volumes:
       # Realm "blog" (Rollen, Client, Test-Benutzer) wird beim Start importiert.
       - ./keycloak/blog-realm.json:/opt/keycloak/data/import/blog-realm.json:ro
+
+  backend:
+    # Image aus GitHub Packages (GHCR). Lokal bauen mit:
+    # ./mvnw package -DskipTests -Dquarkus.container-image.build=true
+    image: ghcr.io/simwie/blog-backend:latest
+    depends_on:
+      - keycloak
+    environment:
+      # Keycloak im Docker-Netzwerk über den Servicenamen ansprechen
+      QUARKUS_OIDC_AUTH_SERVER_URL: http://keycloak:8080/realms/blog
+      QUARKUS_OIDC_CLIENT_ID: backend-service
+      # Secret aus der Umgebung oder einer lokalen .env-Datei, Default für lokal
+      QUARKUS_OIDC_CREDENTIALS_SECRET: ${OIDC_CLIENT_SECRET:-secret}
+    ports:
+      # Host-Port anpassbar, z. B. BACKEND_PORT=8081 docker compose up -d
+      - "127.0.0.1:${BACKEND_PORT:-8080}:8080"

@@ -15,7 +15,7 @@ public class UserService {
 
     public List<User> getUsers() {
         var users = userRepository.listAll();
-        Log.info("Returning " + users.size() + " users");
+        Log.debugf("Returning %d users", users.size());
         return users;
     }
 
@@ -34,14 +34,15 @@ public class UserService {
         if (user == null) {
             user = new User(username);
             addUser(user);
+            Log.infof("Created local user '%s' (id %d) for authenticated Keycloak user", username, user.getId());
         }
         return user;
     }
 
     @Transactional
     public void addUser(User user) {
-        Log.info("Adding user " + user.getUsername());
         userRepository.persist(user);
+        Log.debugf("Persisted user %d '%s'", user.getId(), user.getUsername());
     }
 
     /**
@@ -55,13 +56,14 @@ public class UserService {
         User existing = userRepository.findById(id);
         if (existing == null) return null;
         existing.setUsername(updated.getUsername());
-        Log.info("Updating user " + id);
+        Log.debugf("Updated user %d", id);
         return existing;
     }
 
     @Transactional
     public boolean deleteUser(Long id) {
-        Log.info("Deleting user " + id);
-        return userRepository.deleteById(id);
+        boolean deleted = userRepository.deleteById(id);
+        Log.debugf("Delete user %d: %s", id, deleted ? "deleted" : "not found");
+        return deleted;
     }
 }

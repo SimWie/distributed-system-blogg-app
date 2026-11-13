@@ -4,6 +4,8 @@ import java.util.List;
 
 import ch.hftm.ds.blog.control.UserService;
 import ch.hftm.ds.blog.entity.User;
+import io.quarkus.logging.Log;
+import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -27,6 +29,9 @@ public class UserResource {
     @Inject
     UserService userService;
 
+    @Inject
+    SecurityIdentity identity;
+
     @GET
     public List<User> getUsers() {
         return userService.getUsers();
@@ -47,6 +52,7 @@ public class UserResource {
     @POST
     public Response addUser(@Valid User user) {
         userService.addUser(user);
+        Log.infof("User %d '%s' created by admin %s", user.getId(), user.getUsername(), identity.getPrincipal().getName());
         return Response.status(Response.Status.CREATED).entity(user).build();
     }
 
@@ -59,6 +65,7 @@ public class UserResource {
                     .entity(new ErrorResponse("User with id " + id + " not found"))
                     .build();
         }
+        Log.infof("User %d updated by admin %s", id, identity.getPrincipal().getName());
         return Response.ok(updated).build();
     }
 
@@ -71,6 +78,7 @@ public class UserResource {
                     .entity(new ErrorResponse("User with id " + id + " not found"))
                     .build();
         }
+        Log.infof("User %d deleted by admin %s", id, identity.getPrincipal().getName());
         return Response.noContent().build();
     }
 }
